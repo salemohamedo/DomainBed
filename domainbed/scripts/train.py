@@ -52,7 +52,8 @@ def parse_bool(v):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Domain generalization')
-    # parser.add_argument('--data_dir', type=str, required=False)
+    parser.add_argument('--data_dir', type=str, default="/home/mila/o/omar.salemohamed/DomainBed/domainbed/data/")
+    parser.add_argument('--wandb_log_dir', type=str, default="/network/scratch/o/omar.salemohamed/wandb")
     parser.add_argument('--dataset', type=str, default="WILDSCamelyon")
     parser.add_argument('--algorithm', type=str, default="ERM")
     parser.add_argument('--dann_disc_loss', type=str, default="NegCE")
@@ -155,7 +156,7 @@ if __name__ == "__main__":
 
     wandb.init(
         project='domainbed',
-        dir='/network/scratch/o/omar.salemohamed/wandb',
+        dir=args.wandb_log_dir,
         config=wandb_config,
         name=f'{wandb_config["dataset"]}_{wandb_config["algorithm"]}_{wandb_config["dann_disc_loss"]}_{wandb_config["seed"]}',
     )
@@ -172,10 +173,7 @@ if __name__ == "__main__":
         device = "cpu"
 
     if args.dataset in vars(datasets):
-        data_dir = '/home/mila/o/omar.salemohamed/DomainBed/domainbed/data/'
-        # data_dir = os.getenv('SLURM_TMPDIR')
-        # data_dir = '/network/scratch/o/omar.salemohamed/domainbed/data'
-        dataset = vars(datasets)[args.dataset](data_dir,
+        dataset = vars(datasets)[args.dataset](args.data_dir,
             args.test_envs, hparams)
     else:
         raise NotImplementedError
