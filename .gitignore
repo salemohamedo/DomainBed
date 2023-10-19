@@ -3,3 +3,12 @@ domainbed/facebook.py
 
 domainbed/data/*
 train_output/*
+wandb/
+domainbed/dfs/*
+DANNSweep/*
+sweep_7df6f06/*
+wandb_sweep.sh
+domainbed/scratch
+.vscode/launch.json
+.gitignore
+sweep_7df6f06.tar

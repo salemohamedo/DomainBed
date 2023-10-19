@@ -1,0 +1,23 @@
+command:
+  - ${env}
+  - ${interpreter}
+  - -m
+  - ${program}
+  - ${args}
+method: grid
+name: erm_dann_baselines
+parameters:
+  algorithm:
+    value: ERM
+  dataset:
+    values:
+      - WILDSCamelyon
+      - PACS
+  save_model:
+    value: false
+  seed:
+    values:
+      - 0
+      - 1
+      - 2
+program: domainbed.scripts.train

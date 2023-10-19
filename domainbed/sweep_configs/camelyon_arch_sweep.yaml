@@ -1,0 +1,39 @@
+command:
+  - ${env}
+  - ${interpreter}
+  - -m
+  - ${program}
+  - ${args}
+method: grid
+name: camelyon_dann_disc_arch
+parameters:
+  algorithm:
+    value: DANN
+  dann_disc_loss:
+    values:
+      - DISCREPANCY
+  dann_lambda:
+    values:
+      - 0.1
+      - 1
+      - 2
+  dataset:
+    values:
+      - WILDSCamelyon
+  grad_penalty:
+    values:
+      - 0
+      - 1
+  mlp_depth:
+    values:
+      - 2
+      - 4
+      - 6
+  mlp_width:
+    values:
+      - 64
+      - 256
+      - 512
+  save_model:
+    value: false
+program: domainbed.scripts.train

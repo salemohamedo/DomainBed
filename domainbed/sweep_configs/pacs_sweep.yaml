@@ -1,0 +1,30 @@
+program: domainbed.scripts.train
+command:
+  - ${env}
+  - ${interpreter}
+  - "-m"
+  - ${program}
+  - ${args}
+
+method: grid
+parameters:
+  algorithm:
+    value: DANN
+  # seed:
+  #   values: [0, 1]
+  test_env:
+    values: [0]
+  dann_disc_loss:
+    values: [DISCREPANCY]
+  grad_penalty:
+    values: [0, 1]
+  dann_lambda:
+    values: [0.1, 1, 2]
+  mlp_depth:
+    values: [2, 4, 6]
+  mlp_width:
+    values: [64, 256, 512]
+  dataset:
+    values: [PACS]
+  save_model:
+    value: False

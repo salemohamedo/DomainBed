@@ -65,6 +65,18 @@ class MLP(nn.Module):
         x = self.output(x)
         return x
 
+class DenseNet121(torch.nn.Module):
+    """ResNet with the softmax chopped off and the batchnorm frozen"""
+    def __init__(self, input_shape, hparams):
+        super(DenseNet121, self).__init__()
+        self.network = torchvision.models.densenet121(pretrained=False)
+        self.n_outputs = 1024
+        del self.network.classifier
+        self.network.classifier = nn.Identity()
+
+    def forward(self, x):
+        """Encode x into a feature vector of size n_outputs."""
+        return self.network(x)
 
 class ResNet(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""
@@ -189,6 +201,8 @@ def Featurizer(input_shape, hparams):
         return MNIST_CNN(input_shape)
     elif input_shape[1:3] == (32, 32):
         return wide_resnet.Wide_ResNet(input_shape, 16, 2, 0.)
+    elif hparams['use_densenet']:
+        return DenseNet121(input_shape, hparams)
     elif input_shape[1:3] == (224, 224):
         return ResNet(input_shape, hparams)
     else:

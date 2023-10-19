@@ -1,0 +1,32 @@
+command:
+  - ${env}
+  - ${interpreter}
+  - -m
+  - ${program}
+  - ${args}
+method: grid
+name: camelyon_dann_baselines
+parameters:
+  algorithm:
+    value: DANN
+  dann_disc_loss:
+    values:
+      - DISCREPANCY
+      - DBAT
+      - NegCE
+      - ENTROPY
+  dann_lambda:
+    values:
+      - 0
+      - 0.1
+      - 1
+      - 2
+  dataset:
+    values:
+      - WILDSCamelyon
+  seed:
+    values:
+      - 0
+      - 1
+      - 2
+program: domainbed.scripts.train

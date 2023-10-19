@@ -20,6 +20,8 @@ from domainbed.lib.misc import (
     MovingAverage, l2_between_dicts, proj, Nonparametric
 )
 
+def compute_acc(preds, trues):
+    return ((torch.argmax(preds, dim=1) == trues).sum() / preds.shape[0]).item()
 
 ALGORITHMS = [
     'ERM',
@@ -228,6 +230,18 @@ class AbstractDANN(Algorithm):
             num_domains, self.hparams)
         self.class_embeddings = nn.Embedding(num_classes,
             self.featurizer.n_outputs)
+        self.num_domains = num_domains
+        
+        if self.hparams['dann_disc_loss'] == 'NegCE':
+            self.disc_loss_fn = F.cross_entropy
+        elif self.hparams['dann_disc_loss'] == 'DBAT':
+            self.disc_loss_fn = self.stable_dbat_loss
+        elif self.hparams['dann_disc_loss'] == 'DISCREPANCY':
+            self.disc_loss_fn = self.stable_discrepancy_loss
+        elif self.hparams['dann_disc_loss'] == 'ENTROPY':
+            self.disc_loss_fn = self.uniform_ce_loss
+        else:
+            raise Exception(f'DANN Discriminator Loss type invalid: {self.hparams["dann_disc_loss"]}')
 
         # Optimizers
         self.disc_opt = torch.optim.Adam(
@@ -243,8 +257,46 @@ class AbstractDANN(Algorithm):
             lr=self.hparams["lr_g"],
             weight_decay=self.hparams['weight_decay_g'],
             betas=(self.hparams['beta1'], 0.9))
+    
+    def dbat_loss(self, out, labels):
+            out_e = torch.exp(out)
+            sums = out_e.sum(dim=1)
+            true_logits = torch.gather(out_e, 1, labels.unsqueeze(dim=1))
+            true_logits = true_logits.squeeze()
+            losses = torch.log(1 + (true_logits / (sums - true_logits)))
+            return losses.mean()
+
+    def discrepancy_loss(self, out, labels):
+            sums = out.sum(dim=1)
+            true_logits = torch.gather(out, 1, labels.unsqueeze(dim=1))
+            true_logits = true_logits.squeeze()
+            sums = (sums - true_logits)*(1/(out.shape[1]-1))
+            losses = torch.log(1 + (torch.exp(true_logits) / torch.exp(sums)))
+            return losses.mean()
+
+    def stable_discrepancy_loss(self, out, labels):
+            out = out - out.max(dim=1).values[:,None]
+            sums = out.sum(dim=1)
+            true_logits = torch.gather(out, 1, labels.unsqueeze(dim=1))
+            true_logits = true_logits.squeeze()
+            sums = (sums - true_logits)*(1/(out.shape[1]-1))
+            losses = torch.log(1 + (torch.exp(true_logits) / (torch.exp(sums) + 1e-5)))
+            return losses.mean()
+
+    def stable_dbat_loss(self, out, labels):
+            out = out - out.max(dim=1).values[:,None]
+            out_e = torch.exp(out)
+            sums = out_e.sum(dim=1)
+            true_logits = torch.gather(out_e, 1, labels.unsqueeze(dim=1))
+            true_logits = true_logits.squeeze()
+            losses = torch.log(1 + (true_logits / (sums - true_logits + 1e-5)))
+            return losses.mean()
+    
+    def uniform_ce_loss(self, out, labels):
+        return F.cross_entropy(out, torch.ones_like(out))
 
     def update(self, minibatches, unlabeled=None):
+        results = {}
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
         all_x = torch.cat([x for x, y in minibatches])
@@ -267,12 +319,45 @@ class AbstractDANN(Algorithm):
             disc_loss = (weights * disc_loss).sum()
         else:
             disc_loss = F.cross_entropy(disc_out, disc_labels)
+        results['disc_loss'] = disc_loss.item()
+        results['gen_disc_loss'] = -results['disc_loss']
+
+        # Compute discriminator accuracy
+        disc_acc = compute_acc(disc_out, disc_labels)
+        results['disc_acc'] = disc_acc
+
+        ## Compute domain-wise stats
+        disc_domain_probs_mean = torch.softmax(disc_out, dim=-1).mean(dim=0)
+        disc_domain_probs_std = torch.softmax(disc_out, dim=-1).std(dim=0)
+        for d in range(self.num_domains):
+            results[f'disc_prob_mean_d{d}'] = disc_domain_probs_mean[d].item()
+            results[f'disc_prob_std_d{d}'] = disc_domain_probs_std[d].item()
+            d_indices = disc_labels == d
+            results[f'disc_n_preds_d{d}'] = (torch.argmax(disc_out, dim=1) == d).sum().item()
+            if d_indices.any():
+                results[f'disc_acc_d{d}'] = compute_acc(disc_out[d_indices], disc_labels[d_indices])
+                results[f'disc_loss_d{d}'] = F.cross_entropy(disc_out[d_indices], disc_labels[d_indices]).item()
+
 
         input_grad = autograd.grad(
             F.cross_entropy(disc_out, disc_labels, reduction='sum'),
             [disc_input], create_graph=True)[0]
-        grad_penalty = (input_grad**2).sum(dim=1).mean(dim=0)
+        ## Old grad penalty
+        # grad_penalty = (input_grad**2).sum(dim=1).mean(dim=0)
+        ## Wasserstein grad penalty
+        grad_penalty = (input_grad.norm(dim=1, p=2) - 1).square().mean()
+        results['grad_penalty_loss'] = grad_penalty.item()
         disc_loss += self.hparams['grad_penalty'] * grad_penalty
+        results['disc_loss_w_gp'] = disc_loss.item()
+
+        if self.hparams['dann_disc_loss'] == 'NegCE':
+            gen_disc_loss = -disc_loss
+        else:
+            gen_disc_loss = self.disc_loss_fn(disc_out, disc_labels)
+            results['gen_disc_loss'] = gen_disc_loss.item()
+            gen_disc_loss += self.hparams['grad_penalty'] * grad_penalty
+
+        results['gen_disc_loss_w_gp'] = gen_disc_loss.item()
 
         d_steps_per_g = self.hparams['d_steps_per_g_step']
         if (self.update_count.item() % (1+d_steps_per_g) < d_steps_per_g):
@@ -280,17 +365,19 @@ class AbstractDANN(Algorithm):
             self.disc_opt.zero_grad()
             disc_loss.backward()
             self.disc_opt.step()
-            return {'disc_loss': disc_loss.item()}
         else:
             all_preds = self.classifier(all_z)
             classifier_loss = F.cross_entropy(all_preds, all_y)
             gen_loss = (classifier_loss +
-                        (self.hparams['lambda'] * -disc_loss))
+                        (self.hparams['dann_lambda'] * gen_disc_loss))
             self.disc_opt.zero_grad()
             self.gen_opt.zero_grad()
             gen_loss.backward()
             self.gen_opt.step()
-            return {'gen_loss': gen_loss.item()}
+            results['gen_loss'] = gen_loss.item()
+            results['classifier_loss'] = classifier_loss.item()
+            results['train_in_acc'] = compute_acc(all_preds, all_y)
+        return results
 
     def predict(self, x):
         return self.classifier(self.featurizer(x))
