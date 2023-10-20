@@ -31,9 +31,9 @@ DEFAULT_HPARAMS = '{\
 "class_balanced": false, \
 "d_steps_per_g_step": 1, \
 "data_augmentation": true, \
-"lr": 1e-05, \
-"lr_d": 1e-05, \
-"lr_g": 1e-05, \
+"lr": 1e-03, \
+"lr_d": 1e-03, \
+"lr_g": 1e-03, \
 "mlp_dropout": 0, \
 "resnet18": false, \
 "resnet_dropout": 0.0, \
@@ -247,10 +247,14 @@ if __name__ == "__main__":
         for i in range(len(out_splits))]
     eval_loader_names += ['env{}_uda'.format(i)
         for i in range(len(uda_splits))]
+    
+    if args.task == 'domain_adaptation':
+        n_domains = len(dataset) - len(val_envs)
+    elif args.task == 'domain_generalization':
+        n_domains = len(dataset) - len(args.test_envs + val_envs)
 
     algorithm_class = algorithms.get_algorithm_class(args.algorithm)
-    algorithm = algorithm_class(dataset.input_shape, dataset.num_classes,
-        len(dataset) - len(args.test_envs + val_envs), hparams)
+    algorithm = algorithm_class(dataset.input_shape, dataset.num_classes, n_domains, hparams)
     
     if args.algorithm == 'DANN':
         def count_parameters(model):

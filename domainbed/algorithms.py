@@ -299,7 +299,12 @@ class AbstractDANN(Algorithm):
         results = {}
         device = "cuda" if minibatches[0][0].is_cuda else "cpu"
         self.update_count += 1
-        all_x = torch.cat([x for x, y in minibatches])
+        if unlabeled:
+            ## Make tuple to play nicely with rest of code
+            unlabeled = [(u, None) for u in unlabeled]
+            all_x = torch.cat([x for x, y in minibatches + unlabeled])
+        else:
+            all_x = torch.cat([x for x, y in minibatches])
         all_y = torch.cat([y for x, y in minibatches])
         all_z = self.featurizer(all_x)
         if self.conditional:
@@ -307,12 +312,20 @@ class AbstractDANN(Algorithm):
         else:
             disc_input = all_z
         disc_out = self.discriminator(disc_input)
-        disc_labels = torch.cat([
-            torch.full((x.shape[0], ), i, dtype=torch.int64, device=device)
-            for i, (x, y) in enumerate(minibatches)
-        ])
+        if unlabeled:
+            disc_labels = torch.cat([
+                torch.full((x.shape[0], ), i, dtype=torch.int64, device=device)
+                for i, (x, y) in enumerate(minibatches + unlabeled)
+            ])
+        else:
+            disc_labels = torch.cat([
+                torch.full((x.shape[0], ), i, dtype=torch.int64, device=device)
+                for i, (x, y) in enumerate(minibatches)
+            ])
 
         if self.class_balance:
+            if unlabeled:
+                raise Exception("Shouldn't be in UDA mode and have class_balance set to True")
             y_counts = F.one_hot(all_y).sum(dim=0)
             weights = 1. / (y_counts[all_y] * y_counts.shape[0]).float()
             disc_loss = F.cross_entropy(disc_out, disc_labels, reduction='none')
@@ -330,13 +343,17 @@ class AbstractDANN(Algorithm):
         disc_domain_probs_mean = torch.softmax(disc_out, dim=-1).mean(dim=0)
         disc_domain_probs_std = torch.softmax(disc_out, dim=-1).std(dim=0)
         for d in range(self.num_domains):
-            results[f'disc_prob_mean_d{d}'] = disc_domain_probs_mean[d].item()
-            results[f'disc_prob_std_d{d}'] = disc_domain_probs_std[d].item()
+            if d < len(minibatches):
+                prefix = 'train'
+            else:
+                prefix = 'test'
+            results[f'disc_prob_mean_{prefix}_d{d}'] = disc_domain_probs_mean[d].item()
+            results[f'disc_prob_std_{prefix}_d{d}'] = disc_domain_probs_std[d].item()
             d_indices = disc_labels == d
-            results[f'disc_n_preds_d{d}'] = (torch.argmax(disc_out, dim=1) == d).sum().item()
+            results[f'disc_n_preds_{prefix}_d{d}'] = (torch.argmax(disc_out, dim=1) == d).sum().item()
             if d_indices.any():
-                results[f'disc_acc_d{d}'] = compute_acc(disc_out[d_indices], disc_labels[d_indices])
-                results[f'disc_loss_d{d}'] = F.cross_entropy(disc_out[d_indices], disc_labels[d_indices]).item()
+                results[f'disc_acc_{prefix}_d{d}'] = compute_acc(disc_out[d_indices], disc_labels[d_indices])
+                results[f'disc_loss_{prefix}_d{d}'] = F.cross_entropy(disc_out[d_indices], disc_labels[d_indices]).item()
 
 
         input_grad = autograd.grad(
@@ -366,6 +383,12 @@ class AbstractDANN(Algorithm):
             disc_loss.backward()
             self.disc_opt.step()
         else:
+            if unlabeled:
+                unlabeled_start_idx = 0
+                for x, _ in minibatches:
+                    unlabeled_start_idx += x.shape[0]
+                ## Throw away unlabeled data for classifier
+                all_z = all_z[:unlabeled_start_idx]
             all_preds = self.classifier(all_z)
             classifier_loss = F.cross_entropy(all_preds, all_y)
             gen_loss = (classifier_loss +
