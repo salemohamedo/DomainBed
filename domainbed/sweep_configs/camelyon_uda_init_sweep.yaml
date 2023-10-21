@@ -1,0 +1,28 @@
+command:
+  - ${env}
+  - ${interpreter}
+  - -m
+  - ${program}
+  - ${args}
+method: grid
+name: camelyon_uda_init
+parameters:
+  algorithm:
+    value: DANN
+  task:
+    value: domain_adaptation
+  uda_holdout_fraction:
+    values: [0.1, 0.25, 0.5]
+  dann_disc_loss:
+    values:
+      - NegCE
+  dann_lambda:
+    values: [0.1, 0.5]
+  save_model:
+    value: True
+  dataset:
+    values:
+      - WILDSCamelyon
+  steps:
+    value: 25001
+program: domainbed.scripts.train
