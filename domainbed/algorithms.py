@@ -274,13 +274,21 @@ class AbstractDANN(Algorithm):
             losses = torch.log(1 + (torch.exp(true_logits) / torch.exp(sums)))
             return losses.mean()
 
+    # def stable_discrepancy_loss(self, out, labels):
+    #         out = out - out.max(dim=1).values[:,None]
+    #         sums = out.sum(dim=1)
+    #         true_logits = torch.gather(out, 1, labels.unsqueeze(dim=1))
+    #         true_logits = true_logits.squeeze()
+    #         sums = (sums - true_logits)*(1/(out.shape[1]-1))
+    #         losses = torch.log(1 + (torch.exp(true_logits) / (torch.exp(sums) + 1e-5)))
+    #         return losses.mean()
+
     def stable_discrepancy_loss(self, out, labels):
-            out = out - out.max(dim=1).values[:,None]
             sums = out.sum(dim=1)
             true_logits = torch.gather(out, 1, labels.unsqueeze(dim=1))
             true_logits = true_logits.squeeze()
             sums = (sums - true_logits)*(1/(out.shape[1]-1))
-            losses = torch.log(1 + (torch.exp(true_logits) / (torch.exp(sums) + 1e-5)))
+            losses = torch.logaddexp(true_logits, sums) - sums
             return losses.mean()
 
     def stable_dbat_loss(self, out, labels):
