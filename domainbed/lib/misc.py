@@ -13,9 +13,8 @@ import operator
 
 import numpy as np
 import torch
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import cycle
-
 
 def distance(h1, h2):
     ''' distance of two networks (h1, h2 are classifiers)'''
@@ -184,17 +183,36 @@ def split_meta_train_test(minibatches, num_meta_test=1):
 
     return pairs
 
-def accuracy(network, loader, weights, device):
+def compute_projection_matrix(X):
+    return X.T @ torch.inverse(X @ X.T) @ X
+
+def get_orthogonal_complement(P_matrix, Y):
+    return Y - (P_matrix @ Y.T).T
+
+def accuracy(network, loader, weights, device, compute_ortho=False):
     correct = 0
     total = 0
     weights_offset = 0
+
+    ortho_results_tracker = defaultdict(Counter)
+    P_matrix = compute_projection_matrix(network.classifier.weight.data)
 
     network.eval()
     with torch.no_grad():
         for x, y in loader:
             x = x.to(device)
             y = y.to(device)
-            p = network.predict(x)
+            if compute_ortho:
+                feats = network.featurizer(x)
+                ortho_feats = get_orthogonal_complement(P_matrix, feats)
+                ortho_norms = ortho_feats.norm(dim=-1)
+                for label in y.unique().detach().cpu().numpy():
+                    label_indices = y == label
+                    ortho_results_tracker[label]['count'] += len(label_indices)
+                    ortho_results_tracker[label]['norm_sum'] += ortho_norms[label_indices].sum().item()
+                p = network.classifier(feats)
+            else:
+                p = network.predict(x)
             if weights is None:
                 batch_weights = torch.ones(len(x))
             else:
@@ -208,7 +226,12 @@ def accuracy(network, loader, weights, device):
             total += batch_weights.sum().item()
     network.train()
 
-    return correct / total
+    ortho_results = {}
+    if compute_ortho:
+        for label, counts in ortho_results_tracker.items():
+            ortho_results[label] = counts['norm_sum'] / counts['count']
+
+    return correct / total, ortho_results
 
 class Tee:
     def __init__(self, fname, mode="a"):

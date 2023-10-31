@@ -101,7 +101,7 @@ class ERM(Algorithm):
             self.hparams['nonlinear_classifier'])
 
         self.network = nn.Sequential(self.featurizer, self.classifier)
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             self.network.parameters(),
             lr=self.hparams["lr"],
             weight_decay=self.hparams['weight_decay']
@@ -244,14 +244,14 @@ class AbstractDANN(Algorithm):
             raise Exception(f'DANN Discriminator Loss type invalid: {self.hparams["dann_disc_loss"]}')
 
         # Optimizers
-        self.disc_opt = torch.optim.Adam(
+        self.disc_opt = torch.optim.AdamW(
             (list(self.discriminator.parameters()) +
                 list(self.class_embeddings.parameters())),
             lr=self.hparams["lr_d"],
             weight_decay=self.hparams['weight_decay_d'],
             betas=(self.hparams['beta1'], 0.9))
 
-        self.gen_opt = torch.optim.Adam(
+        self.gen_opt = torch.optim.AdamW(
             (list(self.featurizer.parameters()) +
                 list(self.classifier.parameters())),
             lr=self.hparams["lr_g"],

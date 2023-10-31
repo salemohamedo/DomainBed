@@ -154,11 +154,16 @@ if __name__ == "__main__":
         print('\t{}: {}'.format(k, v))
         wandb_config[f'hparam_{k}'] = v
 
+    if wandb_config["algorithm"] == 'DANN':
+        wandb_name=f'{wandb_config["dataset"]}_{wandb_config["dann_disc_loss"]}_{wandb_config["dann_lambda"]}'
+    else:
+        wandb_name=f'{wandb_config["dataset"]}_{wandb_config["algorithm"]}'
+
     wandb.init(
         project='domainbed',
         dir=args.wandb_log_dir,
         config=wandb_config,
-        name=f'{wandb_config["dataset"]}_{wandb_config["algorithm"]}_{wandb_config["dann_disc_loss"]}_{wandb_config["seed"]}',
+        name=wandb_name,
     )
 
     random.seed(args.seed)
@@ -326,7 +331,12 @@ if __name__ == "__main__":
                         if '_in' in name and name != f'env{args.test_envs[0]}_in':
                             ## Skip eval on train splits during training as camelyon is very large
                             continue
-                    acc = misc.accuracy(algorithm, loader, weights, device)
+                    compute_ortho = False
+                    if '_out' in name and isinstance(algorithm, algorithms.DANN):
+                        compute_ortho = True
+                    acc, ortho_results = misc.accuracy(algorithm, loader, weights, device, compute_ortho=compute_ortho)
+                    for k, v in ortho_results.items():
+                        results[f'{name}_c{k}_ortho_norm'] = v
                     results[name+'_acc'] = acc
                     if name == f'env{args.test_envs[0]}_in':
                         results['testenv_in_acc'] = acc
