@@ -30,10 +30,6 @@ DEFAULT_HPARAMS = '{\
 "beta1": 0.0, \
 "class_balanced": false, \
 "d_steps_per_g_step": 1, \
-"data_augmentation": true, \
-"lr": 1e-03, \
-"lr_d": 1e-03, \
-"lr_g": 1e-03, \
 "mlp_dropout": 0, \
 "resnet18": false, \
 "resnet_dropout": 0.0, \
@@ -61,6 +57,8 @@ if __name__ == "__main__":
     parser.add_argument('--grad_penalty', type=float, default=0)
     parser.add_argument('--mlp_width', type=int, default=256)
     parser.add_argument('--mlp_depth', type=int, default=5)
+    parser.add_argument('--data_augmentation', type=parse_bool, const=True, nargs='?', default=True)
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--task', type=str, default="domain_generalization",
         choices=["domain_generalization", "domain_adaptation"])
     parser.add_argument('--hparams', type=str,
@@ -100,7 +98,19 @@ if __name__ == "__main__":
             args.use_densenet = True
         ## For consistency with wilds benchmark, env 1 should be only used as OOD val dataset
         val_envs.append(1)
-
+    elif 'UDACamelyon' in args.dataset:
+        if args.test_envs == None:
+            args.test_envs = [1]
+        if args.use_densenet == None:
+            args.use_densenet = True
+        assert args.test_envs == [1]
+    elif args.dataset == 'UDA_PACS':
+        if args.test_envs == None:
+            args.test_envs = [1]
+        if args.use_densenet == None:
+            args.use_densenet = False
+        assert args.test_envs == [1]
+        
     print(args)
 
     if args.dataset == 'WILDSCamelyon' and args.test_envs != [2]:
@@ -147,6 +157,10 @@ if __name__ == "__main__":
     hparams['mlp_width'] = args.mlp_width
     hparams['mlp_depth'] = args.mlp_depth
     hparams['use_densenet'] = args.use_densenet
+    hparams['data_augmentation'] = args.data_augmentation
+    hparams['lr'] = args.lr
+    hparams['lr_d'] = args.lr
+    hparams['lr_g'] = args.lr
 
     wandb_config = args.__dict__
     print('HParams:')
@@ -324,10 +338,10 @@ if __name__ == "__main__":
                 results[key] = np.mean(val)
             
             ## For camelyon, only do full eval every 1000 as it's costly
-            if args.dataset != 'WILDSCamelyon' or (step % 1000 == 0) or (step == n_steps - 1):
+            if 'Camelyon' not in args.dataset or (step % 1000 == 0) or (step == n_steps - 1):
                 evals = zip(eval_loader_names, eval_loaders, eval_weights)
                 for name, loader, weights in evals:
-                    if args.dataset == 'WILDSCamelyon':
+                    if 'Camelyon' in args.dataset:
                         if '_in' in name and name != f'env{args.test_envs[0]}_in':
                             ## Skip eval on train splits during training as camelyon is very large
                             continue

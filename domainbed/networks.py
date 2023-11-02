@@ -65,6 +65,29 @@ class MLP(nn.Module):
         x = self.output(x)
         return x
 
+class DomainBedDiscMLP(nn.Module):
+    """Just  an MLP"""
+    def __init__(self):
+        super(DomainBedDiscMLP, self).__init__()
+        self.input = nn.Linear(1024, 256)
+        self.dropout = nn.Dropout(0)
+        self.hiddens = nn.ModuleList([
+            nn.Linear(256, 256)
+            for _ in range(3)])
+        self.output = nn.Linear(256, 2)
+        self.n_outputs = 2
+
+    def forward(self, x):
+        x = self.input(x)
+        x = self.dropout(x)
+        x = F.relu(x)
+        for hidden in self.hiddens:
+            x = hidden(x)
+            x = self.dropout(x)
+            x = F.relu(x)
+        x = self.output(x)
+        return x
+
 class DenseNet121(torch.nn.Module):
     """ResNet with the softmax chopped off and the batchnorm frozen"""
     def __init__(self, input_shape, hparams):

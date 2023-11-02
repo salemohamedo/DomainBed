@@ -291,14 +291,38 @@ class AbstractDANN(Algorithm):
             losses = torch.logaddexp(true_logits, sums) - sums
             return losses.mean()
 
+    # def stable_dbat_loss(self, out, labels):
+    #         out = out - out.max(dim=1).values[:,None]
+    #         out_e = torch.exp(out)
+    #         sums = out_e.sum(dim=1)
+    #         true_logits = torch.gather(out_e, 1, labels.unsqueeze(dim=1))
+    #         true_logits = true_logits.squeeze()
+    #         losses = torch.log(1 + (true_logits / (sums - true_logits + 1e-5)))
+    #         return losses.mean()
     def stable_dbat_loss(self, out, labels):
-            out = out - out.max(dim=1).values[:,None]
-            out_e = torch.exp(out)
-            sums = out_e.sum(dim=1)
-            true_logits = torch.gather(out_e, 1, labels.unsqueeze(dim=1))
-            true_logits = true_logits.squeeze()
-            losses = torch.log(1 + (true_logits / (sums - true_logits + 1e-5)))
-            return losses.mean()
+        r1 = torch.logsumexp(out, dim=-1)
+        batch_size = out.size(0)
+        seq_len = out.size(1)
+
+        # Indices to exclude from each tensor
+        i = labels
+
+        # Create a meshgrid of indices for batch and sequence dimensions
+        batch_indices, seq_indices = torch.meshgrid(torch.arange(batch_size), torch.arange(seq_len), indexing='ij')
+        batch_indices = batch_indices.to(out.device)
+        seq_indices = seq_indices.to(out.device)
+
+        # Create a mask where we set the value to False for indices we want to exclude
+        mask = (seq_indices != i.unsqueeze(1))
+
+        # Get the batched indices using the mask
+        batched_indices = seq_indices[mask].view(batch_size, -1)
+
+        # Gather the results
+        result = torch.stack([tensor[ind] for tensor, ind in zip(out, batched_indices)])
+
+        r2 = torch.logsumexp(result, dim=-1)
+        return (r1 - r2).mean()
     
     def uniform_ce_loss(self, out, labels):
         return F.cross_entropy(out, torch.ones_like(out))

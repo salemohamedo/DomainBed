@@ -1,3 +1,6 @@
+import torchvision
+import torch
+
 import os
 import sys
 import torch
@@ -23,7 +26,7 @@ def load_model(model_dir, n_domains):
         n_domains,
         dump["model_hparams"])
     algorithm.load_state_dict(dump["model_dict"])
-    return algorithm, dump['args'], dump['model_hparams'], dump["model_num_classes"]
+    return algorithm, dump['args'], dump['model_hparams']
 
 def load_dataset(args, hparams):
     args = SimpleNamespace(**args)
@@ -91,82 +94,21 @@ def load_dataset(args, hparams):
         loader_dict[eval_loader_names[i]] = eval_loaders[i]
     return loader_dict
 
-def gather_activations(dataloader, model, feature_dim, N, K):
-    """
-    Collect N activations for each class from the model.
-
-    :param dataloader: PyTorch dataloader
-    :param model: Your trained model
-    :param feature_dim: dimension of the feature/activation from the model
-    :param N: number of samples you want for each class
-    :param K: number of classes
-    :return: Tensor of size [K, N, feature_dim]
-    """
-
-    # Store the activations here
-    activations_tensor = torch.zeros([K, N, feature_dim])
-
-    # Counters to keep track of how many samples we've seen for each label
-    counters = {k: 0 for k in range(K)}
-
-    # Ensure the model is in eval mode
-    model.eval()
-
-    with torch.no_grad():
-        for x, y in dataloader:
-            # Get activations
-            activations = model.featurizer(x)
-
-            # For each label in the batch
-            for i in range(y.size(0)):
-                label = y[i].item()
-
-                # Check if we've already seen enough samples for this label
-                if counters[label] < N:
-                    activations_tensor[label, counters[label]] = activations[i]
-                    counters[label] += 1
-
-            # Check if we've collected enough samples for all labels
-            if all([count >= N for count in counters.values()]):
-                break
-
-    return activations_tensor
-
-argparser = argparse.ArgumentParser()
-argparser.add_argument('--model_path', type=str, required=True)
-argparser.add_argument('--n_domains', type=int, required=True)
-args = argparser.parse_args()
-
-model, model_args, hparams, n_classes = load_model(f'/network/scratch/o/omar.salemohamed/domainbed/output/{args.model_path}', n_domains=args.n_domains)
+model, model_args, hparams = load_model(f'/network/scratch/o/omar.salemohamed/domainbed/output/d29bfe0a-d014-41c4-8fb3-6a355a0ce84e', n_domains=3)
 model.eval()
 
 loaders = load_dataset(model_args, hparams)
+l = loaders['env0_in']
+# dn = torchvision.models.densenet121()
+model = model.to('cuda')
+# x = torch.randn(64, 3, 224, 224, device='cuda')
+for i in range(10):
+    x = torch.randn(64, 3, 224, 224, device='cuda')
+    x = x.to('cuda')
+    model.featurizer(x)
 
-N = 1000
-d = model.classifier.in_features
-data_shape = (3, 224, 224)
-all_features = torch.zeros(args.n_domains, n_classes, N, d)
-n_pc_components = 10
-for env_id in range(args.n_domains):
-    loader = loaders[f'env{env_id}_out']
-    all_features[env_id] = gather_activations(loader, model, d, N, 2)
-
-pca = PCA()
-pca_feats = pca.fit_transform(all_features.flatten(end_dim=-2))
-pca_feats = pca_feats.reshape(args.n_domains, n_classes, N, pca_feats.shape[-1])
-# pca_feats = pca_feats[:, :, :, :2]
-# print(pca_feats.shape)
-df_data = []
-for env_id in range(args.n_domains):
-    for label in range(n_classes):
-        for n in range(N):
-            df_data.append([env_id, label, n] + list(pca_feats[env_id, label, n, :n_pc_components]))
-df = pd.DataFrame(df_data, columns = ['env', 'label', 'n'] + [f'pc_{i + 1}' for i in range(n_pc_components)])
-for k, v in model_args.items():
-    if isinstance(v, list) and len(v) > 1:
-        raise Exception(k, v)
-    elif isinstance(v, list):
-        v = v[0]
-    df[k] = v
-
-df.to_pickle(f'dfs/uda/feats_{model_args["run_id"]}.pk')
+# for i, (x, y) in enumerate(l):
+#     x = x.to('cuda')
+#     model.featurizer(x)
+#     if i > 9:
+#         break

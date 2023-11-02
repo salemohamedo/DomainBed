@@ -38,6 +38,10 @@ DATASETS = [
     "SpawriousM2M_easy",
     "SpawriousM2M_medium",
     "SpawriousM2M_hard",
+    "UDACamelyon",
+    "UDACamelyon_T3",
+    "UDACamelyon_T4",
+    "UDA_PACS",
 ]
 
 def get_dataset_class(dataset_name):
@@ -184,10 +188,11 @@ class RotatedMNIST(MultipleEnvironmentMNIST):
 
 
 class MultipleEnvironmentImageFolder(MultipleDomainDataset):
-    def __init__(self, root, test_envs, augment, hparams):
+    def __init__(self, root, test_envs, augment, hparams, environments=None):
         super().__init__()
-        environments = [f.name for f in os.scandir(root) if f.is_dir()]
-        environments = sorted(environments)
+        if environments == None:
+            environments = [f.name for f in os.scandir(root) if f.is_dir()]
+            environments = sorted(environments)
 
         transform = transforms.Compose([
             transforms.Resize((224,224)),
@@ -237,6 +242,13 @@ class PACS(MultipleEnvironmentImageFolder):
     def __init__(self, root, test_envs, hparams):
         self.dir = os.path.join(root, "PACS/")
         super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams)
+
+class UDA_PACS(MultipleEnvironmentImageFolder):
+    CHECKPOINT_FREQ = 300
+    ENVIRONMENTS = ["A", "C", "P", "S"]
+    def __init__(self, root, test_envs, hparams):
+        self.dir = os.path.join(root, "PACS/")
+        super().__init__(self.dir, test_envs, hparams['data_augmentation'], hparams, environments=['cartoon', 'sketch'])
 
 class DomainNet(MultipleEnvironmentImageFolder):
     CHECKPOINT_FREQ = 1000
@@ -353,6 +365,35 @@ class WILDSCamelyon(WILDSDataset):
         super().__init__(
             dataset, "hospital", test_envs, hparams['data_augmentation'], hparams)
 
+class UDACamelyon(WILDSDataset):
+    ENVIRONMENTS = [ "hospital_0", "hospital_2"]
+    def __init__(self, root, test_envs, hparams):
+        dataset = Camelyon17Dataset(root_dir=root)
+        super().__init__(
+            dataset, "hospital", test_envs, hparams['data_augmentation'], hparams)
+    
+    def metadata_values(self, wilds_dataset, metadata_name):
+        return [0, 2]
+
+class UDACamelyon_T3(WILDSDataset):
+    ENVIRONMENTS = [ "hospital_3", "hospital_2"]
+    def __init__(self, root, test_envs, hparams):
+        dataset = Camelyon17Dataset(root_dir=root)
+        super().__init__(
+            dataset, "hospital", test_envs, hparams['data_augmentation'], hparams)
+    
+    def metadata_values(self, wilds_dataset, metadata_name):
+        return [3, 2]
+
+class UDACamelyon_T4(WILDSDataset):
+    ENVIRONMENTS = [ "hospital_4", "hospital_2"]
+    def __init__(self, root, test_envs, hparams):
+        dataset = Camelyon17Dataset(root_dir=root)
+        super().__init__(
+            dataset, "hospital", test_envs, hparams['data_augmentation'], hparams)
+    
+    def metadata_values(self, wilds_dataset, metadata_name):
+        return [4, 2]
 
 class WILDSFMoW(WILDSDataset):
     ENVIRONMENTS = [ "region_0", "region_1", "region_2", "region_3",
